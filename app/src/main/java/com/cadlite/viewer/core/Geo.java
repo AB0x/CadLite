@@ -35,6 +35,7 @@ public final class Geo {
         /** 0 baseline, 1 bottom, 2 middle, 3 top */
         public int vAlign;
         public boolean multi; // MTEXT: vAlign refers to whole text block
+        public int maxLen;    // longest line length (set when the drawing is finalized)
         public int layer, color;
 
         Text copy() {

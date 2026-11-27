@@ -33,6 +33,11 @@ public final class Drawing {
         layerVisible = visible;
         texts = g.texts;
         fills = g.fills;
+        for (Geo.Text t : texts) {
+            int m = 0;
+            for (String l : t.lines) m = Math.max(m, l.length());
+            t.maxLen = m;
+        }
         for (Map.Entry<Long, Geo.FloatList> en : g.segs.entrySet()) {
             long k = en.getKey();
             Geo.FloatList l = en.getValue();

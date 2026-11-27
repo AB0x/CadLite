@@ -15,14 +15,18 @@ import com.cadlite.viewer.core.Geo;
 import java.util.ArrayList;
 import java.util.List;
 
-/** Fast hardware-accelerated CAD canvas: pan, pinch-zoom, double-tap zoom. */
-public class CadView extends View {
+/**
+ * Legacy Canvas renderer (records every segment into the display list each frame).
+ * Kept only so benchmarks can compare it with the GPU renderer ({@link CadSurface}).
+ */
+public class CadView extends View implements CadDisplay {
 
     private Drawing drawing;
     private Path[] fillPaths;
     private final Paint line = new Paint();
     private final Paint fill = new Paint();
-    private final Paint text = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final TextPainter textPainter = new TextPainter();
+    private long frames;
     private boolean dark = true;
     private boolean touching;
 
@@ -38,7 +42,6 @@ public class CadView extends View {
         line.setStyle(Paint.Style.STROKE);
         line.setStrokeWidth(0); // hairline: always 1px, fastest path
         fill.setStyle(Paint.Style.FILL);
-        text.setSubpixelText(true);
 
         scaleDet = new ScaleGestureDetector(c, new ScaleGestureDetector.SimpleOnScaleGestureListener() {
             @Override public boolean onScale(ScaleGestureDetector d) {
@@ -59,7 +62,7 @@ public class CadView extends View {
         });
     }
 
-    public void setDrawing(Drawing d) {
+    @Override public void setDrawing(Drawing d) {
         drawing = d;
         fillPaths = null;
         if (d != null) {
@@ -80,12 +83,12 @@ public class CadView extends View {
         invalidate();
     }
 
-    public Drawing getDrawing() { return drawing; }
+    @Override public Drawing getDrawing() { return drawing; }
 
-    public void setDark(boolean d) { dark = d; invalidate(); }
-    public boolean isDark() { return dark; }
+    @Override public void setDark(boolean d) { dark = d; invalidate(); }
+    @Override public boolean isDark() { return dark; }
 
-    public void zoomExtents() {
+    @Override public void zoomExtents() {
         if (drawing == null || getWidth() == 0) { needFit = true; return; }
         float w = getWidth(), h = getHeight();
         float bw = Math.max(drawing.maxX - drawing.minX, 1e-9f), bh = Math.max(drawing.maxY - drawing.minY, 1e-9f);
@@ -97,7 +100,13 @@ public class CadView extends View {
         invalidate();
     }
 
-    private void zoomAt(float f, float fx, float fy) {
+    @Override public View view() { return this; }
+    @Override public void refresh() { invalidate(); }
+    @Override public void pan(float dx, float dy) { tx += dx; ty += dy; invalidate(); }
+    @Override public long framesRendered() { return frames; }
+    @Override public void setInteracting(boolean on) { touching = on; invalidate(); }
+
+    @Override public void zoomAt(float f, float fx, float fy) {
         float ns = scale * f;
         if (ns > 1e9f || ns < 1e-12f) return;
         tx = fx - (fx - tx) * f;
@@ -122,6 +131,7 @@ public class CadView extends View {
     }
 
     @Override protected void onDraw(Canvas c) {
+        frames++;
         c.drawColor(dark ? 0xFF1E1E1E : 0xFFFFFFFF);
         Drawing d = drawing;
         if (d == null) return;
@@ -149,39 +159,7 @@ public class CadView extends View {
         }
         c.restore();
 
-        // Texts in screen space. Skipped while panning very dense drawings to stay smooth.
-        if (touching && d.texts.size() > 3000) return;
-        for (Geo.Text t : d.texts) {
-            if (!vis[t.layer]) continue;
-            float size = (float) (t.h * scale * 1.38);
-            if (size < 3.5f) continue;
-            float sx = (float) (t.x * scale + tx), sy = (float) (-t.y * scale + ty);
-            float reach = size * 1.2f * (maxLen(t) + t.lines.length);
-            if (sx + reach < 0 || sx - reach > w || sy + reach < 0 || sy - reach > h) continue;
-            text.setTextSize(Math.min(size, 4000));
-            text.setColor(d.resolve(t.color, t.layer, dark));
-            text.setTextAlign(t.hAlign == 1 ? Paint.Align.CENTER : t.hAlign == 2 ? Paint.Align.RIGHT : Paint.Align.LEFT);
-            float capH = size * 0.72f, lineStep = size * 1.2f;
-            float first; // baseline of first line relative to anchor (screen y grows downward)
-            if (t.multi) {
-                float total = capH + lineStep * (t.lines.length - 1);
-                first = t.vAlign == 3 ? capH : t.vAlign == 2 ? capH - total / 2 : capH - total;
-            } else {
-                first = t.vAlign == 3 ? capH : t.vAlign == 2 ? capH / 2 : 0;
-            }
-            c.save();
-            c.translate(sx, sy);
-            c.rotate((float) -Math.toDegrees(t.rot));
-            if (t.widthFactor != 1) c.scale((float) t.widthFactor, 1);
-            for (int i = 0; i < t.lines.length; i++) c.drawText(t.lines[i], 0, first + i * lineStep, text);
-            c.restore();
-        }
-    }
-
-    private static int maxLen(Geo.Text t) {
-        int m = 0;
-        for (String s : t.lines) m = Math.max(m, s.length());
-        return m;
+        textPainter.draw(c, d, scale, tx, ty, dark, touching ? 1500 : Integer.MAX_VALUE);
     }
 
     /** Layer names sorted as in file, used by the layer dialog. */

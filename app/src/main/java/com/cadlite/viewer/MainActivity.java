@@ -33,7 +33,8 @@ public class MainActivity extends Activity {
     private static final int M_OPEN = 1, M_FIT = 2, M_LAYERS = 3, M_BG = 4, M_INFO = 5;
 
     private FrameLayout root;
-    private CadView view;
+    private CadDisplay view;
+    private String benchRenderer;
     private TextView status;
     private String fileName;
     private boolean busy;
@@ -42,8 +43,11 @@ public class MainActivity extends Activity {
     protected void onCreate(Bundle b) {
         super.onCreate(b);
         root = new FrameLayout(this);
-        view = new CadView(this);
-        root.addView(view);
+        Intent start = getIntent();
+        String bench = start != null ? start.getStringExtra("bench") : null;
+        benchRenderer = bench != null ? start.getStringExtra("renderer") : null;
+        view = "canvas".equals(benchRenderer) ? new CadView(this) : new CadSurface(this);
+        root.addView(view.view());
         status = new TextView(this);
         status.setTextColor(Color.WHITE);
         status.setBackgroundColor(0xCC000000);
@@ -54,7 +58,44 @@ public class MainActivity extends Activity {
                 FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.CENTER));
         setContentView(root);
         setTitle("CAD Lite");
-        handleIntent(getIntent());
+        if (bench != null) loadBench(new File(getFilesDir(), bench));
+        else handleIntent(start);
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        if (view instanceof CadSurface) ((CadSurface) view).onPause();
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (view instanceof CadSurface) ((CadSurface) view).onResume();
+    }
+
+    /** Benchmark mode (debug builds, started via adb). */
+    private void loadBench(final File f) {
+        busy = true;
+        fileName = f.getName();
+        setTitle(fileName + " (bench " + (benchRenderer == null ? "gl" : benchRenderer) + ")");
+        showStatus("Opening " + fileName + "…");
+        new Thread(() -> {
+            try {
+                long t0 = System.currentTimeMillis();
+                final Drawing d = DxfParser.parse(new FileInputStream(f), null);
+                final long ms = System.currentTimeMillis() - t0;
+                runOnUiThread(() -> {
+                    busy = false;
+                    showStatus(null);
+                    view.setDrawing(d);
+                    new Bench(view, new File(getFilesDir(), "bench.txt"),
+                            benchRenderer == null ? "gl" : benchRenderer).start(ms);
+                });
+            } catch (Throwable t) {
+                fail("Bench load failed: " + t);
+            }
+        }, "bench-loader").start();
     }
 
     @Override
@@ -239,11 +280,11 @@ public class MainActivity extends Activity {
                 .setTitle("Layers (" + n + ")")
                 .setMultiChoiceItems(names, checked, (dlg, which, on) -> {
                     d.layerVisible[order[which]] = on;
-                    view.invalidate();
+                    view.refresh();
                 })
                 .setPositiveButton("Done", null)
-                .setNeutralButton("All on", (dlg, w) -> { Arrays.fill(d.layerVisible, true); view.invalidate(); })
-                .setNegativeButton("All off", (dlg, w) -> { Arrays.fill(d.layerVisible, false); view.invalidate(); })
+                .setNeutralButton("All on", (dlg, w) -> { Arrays.fill(d.layerVisible, true); view.refresh(); })
+                .setNegativeButton("All off", (dlg, w) -> { Arrays.fill(d.layerVisible, false); view.refresh(); })
                 .show();
     }
 

@@ -46,8 +46,9 @@ public class MainActivity extends Activity {
         Intent start = getIntent();
         String bench = start != null ? start.getStringExtra("bench") : null;
         benchRenderer = bench != null ? start.getStringExtra("renderer") : null;
-        view = "canvas".equals(benchRenderer) ? new CadView(this) : new CadSurface(this);
-        if ("gl-nocache".equals(benchRenderer)) ((CadSurface) view).setCacheDisabled(true);
+        String r = benchRenderer == null ? "" : benchRenderer;
+        view = r.equals("canvas") ? new CadView(this) : new CadSurface(this, !r.contains("nomsaa"));
+        if (r.contains("nocache")) ((CadSurface) view).setCacheDisabled(true);
         root.addView(view.view());
         status = new TextView(this);
         status.setTextColor(Color.WHITE);

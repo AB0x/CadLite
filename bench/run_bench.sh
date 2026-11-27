@@ -7,10 +7,11 @@ mkdir -p $OUT
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 adb shell settings put system screen_off_timeout 1800000
 adb shell svc power stayon true
+if [ -n "${BENCH_SIZE:-}" ]; then adb shell wm size $BENCH_SIZE; adb shell wm density ${BENCH_DENSITY:-220}; sleep 3; fi
 adb shell wm size > $OUT/device.txt
 adb push bench/heavy.dxf /data/local/tmp/heavy.dxf
 adb shell "cat /data/local/tmp/heavy.dxf | run-as $PKG sh -c 'mkdir -p files && cat > files/heavy.dxf'"
-for R in canvas gl-nocache gl; do
+for R in ${BENCH_RENDERERS:-canvas gl-nocache gl}; do
   adb shell run-as $PKG rm -f files/bench.txt
   adb shell am force-stop $PKG
   adb shell am start -W -n $PKG/.MainActivity --es bench heavy.dxf --es renderer $R

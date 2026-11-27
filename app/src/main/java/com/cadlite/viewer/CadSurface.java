@@ -32,12 +32,14 @@ final class CadSurface extends FrameLayout implements CadDisplay {
     private final ScaleGestureDetector scaleDet;
     private final GestureDetector gestDet;
 
-    CadSurface(Context c) {
+    CadSurface(Context c) { this(c, true); }
+
+    CadSurface(Context c, boolean msaa) {
         super(c);
         renderer = new GlRenderer(vp);
         gl = new GLSurfaceView(c);
         gl.setEGLContextClientVersion(2);
-        gl.setEGLConfigChooser(new ConfigChooser());
+        gl.setEGLConfigChooser(new ConfigChooser(msaa));
         gl.setPreserveEGLContextOnPause(true);
         gl.setRenderer(renderer);
         gl.setRenderMode(GLSurfaceView.RENDERMODE_WHEN_DIRTY);
@@ -153,6 +155,9 @@ final class CadSurface extends FrameLayout implements CadDisplay {
     /** Prefers 4x MSAA (smooth lines) with a stencil buffer; falls back gracefully. */
     private static final class ConfigChooser implements GLSurfaceView.EGLConfigChooser {
         private static final int EGL_OPENGL_ES2_BIT = 4;
+        private final boolean msaa;
+
+        ConfigChooser(boolean msaa) { this.msaa = msaa; }
 
         @Override public EGLConfig chooseConfig(EGL10 egl, EGLDisplay display) {
             int[][] attempts = {
@@ -164,7 +169,8 @@ final class CadSurface extends FrameLayout implements CadDisplay {
                     {EGL10.EGL_STENCIL_SIZE, 1, EGL10.EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT, EGL10.EGL_NONE},
                     {EGL10.EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT, EGL10.EGL_NONE},
             };
-            for (int[] attr : attempts) {
+            for (int i = msaa ? 0 : 1; i < attempts.length; i++) {
+                int[] attr = attempts[i];
                 int[] num = new int[1];
                 EGLConfig[] cfgs = new EGLConfig[1];
                 if (egl.eglChooseConfig(display, attr, cfgs, 1, num) && num[0] > 0) return cfgs[0];

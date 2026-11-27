@@ -44,7 +44,8 @@ public class MainActivity extends Activity {
         super.onCreate(b);
         root = new FrameLayout(this);
         Intent start = getIntent();
-        String bench = start != null ? start.getStringExtra("bench") : null;
+        boolean debuggable = (getApplicationInfo().flags & android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0;
+        String bench = debuggable && start != null ? start.getStringExtra("bench") : null; // benchmarks: debug builds only
         benchRenderer = bench != null ? start.getStringExtra("renderer") : null;
         String r = benchRenderer == null ? "" : benchRenderer;
         view = r.equals("canvas") ? new CadView(this) : new CadSurface(this, !r.contains("nomsaa"));

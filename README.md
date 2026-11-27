@@ -18,11 +18,25 @@ Not included, to keep it basic: linetypes/line weights, hatch patterns, paper-sp
 xrefs, images, binary DXF, editing and measuring.
 
 ## Performance design
-- DXF is streamed and drawn straight into flat float arrays, which are drawn with `Canvas.drawLines`
-  using hairline paint (GPU fast path). Chunks off screen are skipped.
-- Each block is tessellated once and reused for every insert.
-- Coordinates are stored relative to the drawing center, so UTM/large-coordinate drawings stay precise.
+- **GPU rendering (OpenGL ES 2):** all geometry is uploaded to GPU memory once. Panning and zooming
+  only send a new 4-number transform, so the cost per frame no longer grows with the size of the drawing.
+- Segments are sorted along a space-filling curve into compact chunks, so off-screen chunks are skipped.
+- Solid fills: convex shapes are batched as triangles; others use the stencil even-odd technique.
+- Texts are drawn on a light layer above the GPU view, which redraws only when some text is readable.
+- Slow GPUs: if full-geometry frames take more than ~28 ms while you move, a cached overview texture
+  is used **only during the gesture**. Still views are always drawn from the real geometry, so lines stay crisp.
+- DXF is streamed, each block is tessellated once and reused for every insert, and coordinates are
+  stored relative to the drawing center, so large-coordinate drawings stay precise.
 - The DWG engine (WebAssembly, ~7.8 MB raw, ~2 MB compressed in the APK) only loads when you open a DWG.
+
+### Benchmark (emulator, 495k segments / 2,040 fills / 3,360 texts from a 1.1 MB DXF)
+| Zoomed out | Old Canvas renderer | GPU renderer |
+|---|---|---|
+| App CPU time per frame | 112 ms | 0.2–1 ms |
+
+Run it yourself: push to the `perf` branch; `.github/workflows/bench.yml` generates the test drawing
+(`bench/make_test_dxf.py`), runs the app on an Android emulator and publishes results to the
+`bench-results` branch. (The emulator has no real GPU, so frame rates there are not representative.)
 
 ## Build the APK
 
@@ -48,7 +62,11 @@ without GPL, remove `app/src/main/assets/dwg/` and the app becomes DXF-only.
 ```
 app/src/main/java/com/cadlite/viewer/
   MainActivity.java     UI: open, fit, layers, background, info
-  CadView.java          renderer + touch gestures
+  CadSurface.java       GPU view + text layer + touch gestures
+  GlRenderer.java       OpenGL ES renderer (vertex buffers, stencil fills, overview cache)
+  TextPainter.java      screen-space text drawing
+  CadView.java          old Canvas renderer, kept only for benchmarks
+  Bench.java            automated pan/zoom benchmark (debug builds)
   DwgConverter.java     DWG → DXF through LibreDWG WASM in a hidden WebView
   core/DxfParser.java   streaming DXF parser + tessellation
   core/Drawing.java     render-ready batches, extents, color resolve

@@ -104,6 +104,11 @@ public final class DxfParser {
         boolean building;
     }
     private final Map<String, Block> blocks = new HashMap<>();
+    /** Text style name (upper case) -> font file; style handle -> style name; block record handle -> name. */
+    private final Map<String, String> styleFont = new HashMap<>();
+    private final Map<String, String> styleByHandle = new HashMap<>();
+    private final Map<String, String> blockByHandle = new HashMap<>();
+    private double dimAsz = 0.18, dimScale = 1;
 
     private boolean originSet;
     private double ox, oy;
@@ -219,6 +224,8 @@ public final class DxfParser {
             if (code == 0 && "ENDSEC".equals(value.trim())) break;
             if (code == 9) { var = value.trim(); continue; }
             if ("$ACADVER".equals(var) && code == 1) version = value.trim();
+            else if ("$DIMASZ".equals(var) && code == 40) dimAsz = num(value);
+            else if ("$DIMSCALE".equals(var) && code == 40) { double v = num(value); if (v > 0) dimScale = v; }
             else if ("$EXTMIN".equals(var)) { if (code == 10) exMinX = num(value); else if (code == 20) exMinY = num(value); }
             else if ("$EXTMAX".equals(var)) { if (code == 10) exMaxX = num(value); else if (code == 20) exMaxY = num(value); }
         }
@@ -243,6 +250,17 @@ public final class DxfParser {
                 layerColors.set(idx, col);
                 boolean frozen = (e.i(70, 0) & 1) != 0;
                 layerVis.set(idx, aci >= 0 && !frozen);
+            } else if ("STYLE".equals(t)) {
+                Ent e = readEnt(t);
+                String name = e.s(2, null);
+                if (name == null) continue;
+                styleFont.put(name.toUpperCase(), e.s(3, ""));
+                String h = e.s(5, null);
+                if (h != null) styleByHandle.put(h.toUpperCase(), name);
+            } else if ("BLOCK_RECORD".equals(t)) {
+                Ent e = readEnt(t);
+                String name = e.s(2, null), h = e.s(5, null);
+                if (name != null && h != null) blockByHandle.put(h.toUpperCase(), name);
             }
         }
     }
@@ -365,7 +383,7 @@ public final class DxfParser {
                 seg(l, m, e.d(10, 0), e.d(20, 0), e.d(11, 0), e.d(21, 0));
                 break;
             }
-            case "LWPOLYLINE": lwpolyline(e, out.list(lay, col), ocs(e, m)); break;
+            case "LWPOLYLINE": lwpolyline(e, out, lay, col, ocs(e, m)); break;
             case "POLYLINE": polyline(e, src, out.list(lay, col), m); break;
             case "CIRCLE": {
                 Mat mm = ocs(e, m);
@@ -391,16 +409,20 @@ public final class DxfParser {
             }
             case "LEADER": {
                 Geo.FloatList l = out.list(lay, col);
-                double px = 0, py = 0; boolean first = true;
+                List<double[]> pts = new ArrayList<>();
                 for (int i = 0; i < e.n; i++) {
                     if (e.c[i] == 10) {
                         double x = num(e.v[i]), y = (i + 1 < e.n && e.c[i + 1] == 20) ? num(e.v[i + 1]) : 0;
-                        if (!first) seg(l, m, px, py, x, y);
-                        px = x; py = y; first = false;
+                        pts.add(new double[]{x, y});
                     }
                 }
+                for (int i = 1; i < pts.size(); i++)
+                    seg(l, m, pts.get(i - 1)[0], pts.get(i - 1)[1], pts.get(i)[0], pts.get(i)[1]);
+                if (e.i(71, 1) != 0 && pts.size() >= 2)
+                    arrow(out, m, null, pts.get(0), pts.get(1), dimAsz * dimScale, lay, col, depth);
                 break;
             }
+            case "MULTILEADER": case "MLEADER": mleader(e, out, m, lay, col, depth); break;
             case "SOLID": case "TRACE": {
                 Mat mm = ocs(e, m);
                 double x1 = e.d(10, 0), y1 = e.d(20, 0), x2 = e.d(11, 0), y2 = e.d(21, 0);
@@ -489,16 +511,242 @@ public final class DxfParser {
         }
     }
 
-    private void lwpolyline(Ent e, Geo.FloatList l, Mat m) {
-        List<double[]> v = new ArrayList<>();
+    private void lwpolyline(Ent e, Geo out, int lay, int col, Mat m) {
+        double cw = e.d(43, 0);
+        List<double[]> v = new ArrayList<>(); // x, y, bulge, startWidth, endWidth
+        boolean widths = cw > 0;
         for (int i = 0; i < e.n; i++) {
             int c = e.c[i];
-            if (c == 10) v.add(new double[]{num(e.v[i]), 0, 0});
+            if (c == 10) v.add(new double[]{num(e.v[i]), 0, 0, cw, cw});
             else if (c == 20 && !v.isEmpty()) v.get(v.size() - 1)[1] = num(e.v[i]);
             else if (c == 42 && !v.isEmpty()) v.get(v.size() - 1)[2] = num(e.v[i]);
+            else if (c == 40 && !v.isEmpty()) { v.get(v.size() - 1)[3] = num(e.v[i]); widths |= num(e.v[i]) > 0; }
+            else if (c == 41 && !v.isEmpty()) { v.get(v.size() - 1)[4] = num(e.v[i]); widths |= num(e.v[i]) > 0; }
         }
         boolean closed = (e.i(70, 0) & 1) != 0;
-        drawVerts(l, m, v, closed);
+        drawVerts(out.list(lay, col), m, v, closed);
+        if (widths) widePolyline(out, m, v, closed, lay, col);
+    }
+
+    /** Wide polyline segments become filled quads (a band); a wide tiny circle becomes a dot. */
+    private static void widePolyline(Geo out, Mat m, List<double[]> v, boolean closed, int lay, int col) {
+        int n = v.size();
+        if (n < 2) return;
+        // A closed two-vertex polyline with bulges of +/-1 is a circle; with constant width it is a
+        // ring, or a solid dot when the width covers the centre (e.g. the _DotSmall arrowhead).
+        if (closed && n == 2 && Math.abs(Math.abs(v.get(0)[2]) - 1) < 1e-6 && Math.abs(Math.abs(v.get(1)[2]) - 1) < 1e-6
+                && v.get(0)[3] == v.get(0)[4] && v.get(0)[3] == v.get(1)[3] && v.get(1)[3] == v.get(1)[4]) {
+            double[] a = v.get(0), b = v.get(1);
+            double cx = (a[0] + b[0]) / 2, cy = (a[1] + b[1]) / 2, r = Math.hypot(a[0] - b[0], a[1] - b[1]) / 2;
+            double w = a[3] / 2, ro = r + w, ri = r - w;
+            int k = 48;
+            Geo.Fill f = new Geo.Fill();
+            f.layer = lay; f.color = col;
+            double[] outer = new double[k * 2];
+            for (int i = 0; i < k; i++) { double t = 2 * Math.PI * i / k; outer[i * 2] = cx + ro * Math.cos(t); outer[i * 2 + 1] = cy + ro * Math.sin(t); }
+            if (ri <= 0) {
+                f.loops = new float[][]{xf(m, outer)};
+            } else {
+                double[] inner = new double[k * 2];
+                for (int i = 0; i < k; i++) { double t = 2 * Math.PI * i / k; inner[i * 2] = cx + ri * Math.cos(t); inner[i * 2 + 1] = cy + ri * Math.sin(t); }
+                f.loops = new float[][]{xf(m, outer), xf(m, inner)}; // even-odd ring
+            }
+            out.fills.add(f);
+            return;
+        }
+        int segs = closed ? n : n - 1;
+        for (int i = 0; i < segs; i++) {
+            double[] a = v.get(i), b = v.get((i + 1) % n);
+            double w0 = a[3] / 2, w1 = a[4] / 2;
+            if (w0 <= 0 && w1 <= 0) continue;
+            List<Double> pts = new ArrayList<>();
+            pts.add(a[0]); pts.add(a[1]);
+            bulgeSeg(null, m, a[0], a[1], b[0], b[1], a[2], pts);
+            int k = pts.size() / 2;
+            for (int j = 1; j < k; j++) {
+                double x0 = pts.get(j * 2 - 2), y0 = pts.get(j * 2 - 1), x1 = pts.get(j * 2), y1 = pts.get(j * 2 + 1);
+                double dx = x1 - x0, dy = y1 - y0, len = Math.hypot(dx, dy);
+                if (len < 1e-12) continue;
+                double t0 = (double) (j - 1) / (k - 1), t1 = (double) j / (k - 1);
+                double h0 = w0 + (w1 - w0) * t0, h1 = w0 + (w1 - w0) * t1;
+                double nx = -dy / len, ny = dx / len;
+                Geo.Fill f = new Geo.Fill();
+                f.layer = lay; f.color = col;
+                f.loops = new float[][]{xf(m, new double[]{
+                        x0 + nx * h0, y0 + ny * h0, x1 + nx * h1, y1 + ny * h1,
+                        x1 - nx * h1, y1 - ny * h1, x0 - nx * h0, y0 - ny * h0})};
+                out.fills.add(f);
+            }
+        }
+    }
+
+    /**
+     * Draws an arrowhead with its tip at {@code tip}, pointing away from {@code from}.
+     * A named block (e.g. _DotSmall) is inserted scaled by size; otherwise a closed filled arrow.
+     */
+    private void arrow(Geo out, Mat m, String block, double[] tip, double[] from, double size, int lay, int col, int depth) {
+        if (size <= 0) return;
+        double ang = Math.atan2(tip[1] - from[1], tip[0] - from[0]);
+        if (block != null && !block.isEmpty()) {
+            String b = block.toUpperCase();
+            if (b.equals("_NONE")) return;
+            Geo g = blockGeo(block, depth);
+            if (g != null) {
+                out.instance(g, m.mul(Mat.translate(tip[0], tip[1])).mul(Mat.rotate(ang)).mul(Mat.scale(size, size)), lay, col);
+                return;
+            }
+        }
+        Mat t = m.mul(Mat.translate(tip[0], tip[1])).mul(Mat.rotate(ang)).mul(Mat.scale(size, size));
+        Geo.Fill f = new Geo.Fill();
+        f.layer = lay; f.color = col;
+        f.loops = new float[][]{xf(t, new double[]{0, 0, -1, 1 / 6.0, -1, -1 / 6.0})};
+        out.fills.add(f);
+    }
+
+    /** AcCmColor as stored in MULTILEADER (raw int): 0xC0 ByLayer, 0xC1 ByBlock, 0xC2 RGB, 0xC3 ACI. */
+    private static int cmColor(int raw, int def) {
+        int method = (raw >>> 24) & 0xFF;
+        switch (method) {
+            case 0xC0: return Aci.BYLAYER;
+            case 0xC1: return Aci.BYBLOCK;
+            case 0xC2: return Aci.fromTrueColor(raw & 0xFFFFFF);
+            case 0xC3: return Aci.fromAci(raw & 0xFF);
+            default: return def;
+        }
+    }
+
+    /** MULTILEADER: leader lines, landing (dogleg), arrowheads, and MTEXT or block content. */
+    private void mleader(Ent e, Geo out, Mat m, int lay, int col, int depth) {
+        // context data
+        double scale = 1, textH = 0, ctxArrow = 0, tx = 0, ty = 0, dirX = 1, dirY = 0, bx = 0, by = 0, bsx = 1, bsy = 1, brot = 0;
+        String text = null, ctxStyle = null, ctxBlock = null;
+        int attach = 1, ctxTextColor = Integer.MIN_VALUE;
+        boolean hasText = false, hasBlock = false;
+        // leaders
+        List<double[]> lastPts = new ArrayList<>(), doglegs = new ArrayList<>();
+        List<List<List<double[]>>> lines = new ArrayList<>();
+        // entity-level
+        int lineType = 1, lineColor = Integer.MIN_VALUE, textColor = Integer.MIN_VALUE;
+        String arrowH = null, styleH = null;
+        double arrowSize = -1;
+        boolean landing = true, dogleg = true;
+
+        int sec = 0; // 0 entity, 1 context, 2 leader, 3 leader line
+        double[] lp = null, dv = null; double dl = 0;
+        List<List<double[]>> curLines = null;
+        List<double[]> curLine = null;
+        for (int i = 0; i < e.n; i++) {
+            int c = e.c[i];
+            String v = e.v[i];
+            if (c == 300) { sec = 1; continue; }
+            if (c == 301) { sec = 0; continue; }
+            if (c == 302) { sec = 2; lp = new double[2]; dv = new double[]{1, 0}; dl = 0; curLines = new ArrayList<>(); continue; }
+            if (c == 303) {
+                if (lp != null) { lastPts.add(lp); doglegs.add(new double[]{dv[0], dv[1], dl}); lines.add(curLines); }
+                sec = 1; continue;
+            }
+            if (c == 304 && sec >= 2 && v.trim().startsWith("LEADER_LINE")) { sec = 3; curLine = new ArrayList<>(); continue; }
+            if (c == 304 && sec == 1 && v.trim().startsWith("LEADER")) continue;
+            if (c == 305) { if (curLines != null && curLine != null) curLines.add(curLine); sec = 2; continue; }
+            double d = num(v);
+            switch (sec) {
+                case 1:
+                    switch (c) {
+                        case 40: scale = d; break;
+                        case 41: textH = d; break;
+                        case 140: ctxArrow = d; break;
+                        case 290: hasText = d != 0; break;
+                        case 304: text = v; break;
+                        case 12: tx = d; break;
+                        case 22: ty = d; break;
+                        case 13: dirX = d; break;
+                        case 23: dirY = d; break;
+                        case 340: ctxStyle = v.trim(); break;
+                        case 171: attach = (int) d; break;
+                        case 90: ctxTextColor = (int) (long) d; break;
+                        case 296: hasBlock = d != 0; break;
+                        case 341: ctxBlock = v.trim(); break;
+                        case 15: bx = d; break;
+                        case 25: by = d; break;
+                        case 16: bsx = d; break;
+                        case 26: bsy = d; break;
+                        case 46: brot = d; break;
+                    }
+                    break;
+                case 2:
+                    switch (c) {
+                        case 10: lp[0] = d; break;
+                        case 20: lp[1] = d; break;
+                        case 11: dv[0] = d; break;
+                        case 21: dv[1] = d; break;
+                        case 40: dl = d; break;
+                    }
+                    break;
+                case 3:
+                    if (c == 10) curLine.add(new double[]{d, 0});
+                    else if (c == 20 && !curLine.isEmpty()) curLine.get(curLine.size() - 1)[1] = d;
+                    break;
+                default:
+                    switch (c) {
+                        case 170: lineType = (int) d; break;
+                        case 91: lineColor = (int) (long) d; break;
+                        case 342: arrowH = v.trim(); break;
+                        case 42: arrowSize = d; break;
+                        case 290: landing = d != 0; break;
+                        case 291: dogleg = d != 0; break;
+                        case 343: styleH = v.trim(); break;
+                        case 92: textColor = (int) (long) d; break;
+                    }
+            }
+        }
+        if (scale <= 0) scale = 1;
+        int lcol = lineColor == Integer.MIN_VALUE ? col : cmColor(lineColor, col);
+        if (lcol == Aci.BYLAYER) lcol = col;
+        double asz = (arrowSize > 0 ? arrowSize : ctxArrow) * scale;
+        String arrowBlock = arrowH == null ? null : blockByHandle.get(arrowH.toUpperCase());
+        Geo.FloatList l = out.list(lay, lcol);
+        for (int k = 0; k < lastPts.size(); k++) {
+            double[] last = lastPts.get(k), dg = doglegs.get(k);
+            if (lineType != 0) {
+                for (List<double[]> ln : lines.get(k)) {
+                    if (ln.isEmpty()) continue;
+                    for (int j = 1; j < ln.size(); j++) seg(l, m, ln.get(j - 1)[0], ln.get(j - 1)[1], ln.get(j)[0], ln.get(j)[1]);
+                    double[] end = ln.get(ln.size() - 1);
+                    seg(l, m, end[0], end[1], last[0], last[1]);
+                    double[] next = ln.size() > 1 ? ln.get(1) : last;
+                    arrow(out, m, arrowBlock, ln.get(0), next, asz, lay, lcol, depth);
+                }
+            }
+            if (landing && dogleg && dg[2] > 0)
+                seg(l, m, last[0], last[1], last[0] + dg[0] * dg[2], last[1] + dg[1] * dg[2]);
+        }
+        if (hasText && text != null && !text.isEmpty()) {
+            String st = styleH != null ? styleByHandle.get(styleH.toUpperCase()) : null;
+            if (st == null && ctxStyle != null) st = styleByHandle.get(ctxStyle.toUpperCase());
+            String s = cleanText(text, true, arabicStyle(st));
+            if (!s.trim().isEmpty()) {
+                Geo.Text t = new Geo.Text();
+                t.hAlign = (Math.max(1, attach) - 1) % 3;
+                int row = (Math.max(1, attach) - 1) / 3;
+                t.vAlign = row == 0 ? 3 : row == 1 ? 2 : 1;
+                t.multi = true;
+                t.h = textH > 0 ? textH : 0.18 * scale;
+                t.rot = Math.atan2(dirY, dirX);
+                place(t, m, tx, ty);
+                t.lines = s.split("\n", -1);
+                t.layer = lay;
+                int tc = textColor != Integer.MIN_VALUE ? textColor : ctxTextColor;
+                t.color = tc == Integer.MIN_VALUE ? col : cmColor(tc, col);
+                if (t.color == Aci.BYLAYER) t.color = col;
+                out.texts.add(t);
+            }
+        }
+        if (hasBlock && ctxBlock != null) {
+            String bn = blockByHandle.get(ctxBlock.toUpperCase());
+            Geo g = bn == null ? null : blockGeo(bn, depth);
+            if (g != null)
+                out.instance(g, m.mul(Mat.translate(bx, by)).mul(Mat.rotate(brot)).mul(Mat.scale(bsx, bsy)), lay, col);
+        }
     }
 
     private static void drawVerts(Geo.FloatList l, Mat m, List<double[]> v, boolean closed) {
@@ -630,7 +878,8 @@ public final class DxfParser {
     // ---------------------------------------------------------------- text
     private void text(Ent e, Geo out, Mat m, int lay, int col) {
         if ("ATTRIB".equals(e.type) && (e.i(70, 0) & 1) != 0) return;
-        String s = cleanText(e.s(1, ""), false);
+        boolean arabic = arabicStyle(e.s(7, "STANDARD"));
+        String s = cleanText(e.s(1, ""), false, arabic);
         if (s.trim().isEmpty()) return;
         int h = e.i(72, 0);
         int vcode = "ATTRIB".equals(e.type) ? 74 : 73;
@@ -648,14 +897,20 @@ public final class DxfParser {
         place(t, m, x, y);
         t.lines = new String[]{s};
         t.layer = lay; t.color = col;
+        t.rtl = arabic; // right-to-left SHX font: the start point is the right end of the text
         out.texts.add(t);
+    }
+
+    private boolean arabicStyle(String style) {
+        String f = styleFont.get(style == null ? "STANDARD" : style.toUpperCase());
+        return ArabicShx.isMappedFont(f);
     }
 
     private void mtext(Ent e, Geo out, Mat m, int lay, int col) {
         StringBuilder sb = new StringBuilder();
         for (int i = 0; i < e.n; i++) if (e.c[i] == 3) sb.append(e.v[i]);
         sb.append(e.s(1, ""));
-        String s = cleanText(sb.toString(), true);
+        String s = cleanText(sb.toString(), true, arabicStyle(e.s(7, "STANDARD")));
         if (s.trim().isEmpty()) return;
         Geo.Text t = new Geo.Text();
         int ap = e.i(71, 1);
@@ -679,10 +934,22 @@ public final class DxfParser {
         if (m.det() < 0) t.rot = Math.PI - t.rot; // keep mirrored text readable
     }
 
-    /** Strips MTEXT formatting codes and decodes %% and \U+ escapes. */
+    /** Strips MTEXT formatting codes and decodes %% and \U+ escapes (no Arabic SHX mapping). */
     static String cleanText(String s, boolean mtext) {
-        if (s.indexOf('\\') < 0 && s.indexOf('%') < 0 && s.indexOf('{') < 0) return s;
+        return cleanText(s, mtext, false);
+    }
+
+    /**
+     * Strips MTEXT formatting codes, decodes %% and \U+ escapes, and converts keyboard-mapped
+     * Arabic SHX text to real Arabic. {@code mapped} is whether the text style's font is such a
+     * font; MTEXT inline font switches (\f, \F) inside {...} groups are followed.
+     */
+    static String cleanText(String s, boolean mtext, boolean mapped) {
+        if (!mapped && s.indexOf('\\') < 0 && s.indexOf('%') < 0 && s.indexOf('{') < 0) return s;
         StringBuilder o = new StringBuilder(s.length());
+        boolean[] stack = new boolean[32];
+        int sp = 0;
+        boolean map = mapped;
         int n = s.length();
         for (int i = 0; i < n; i++) {
             char ch = s.charAt(i);
@@ -702,11 +969,11 @@ public final class DxfParser {
                 if ((k == 'U' || k == 'u') && i + 6 < n && s.charAt(i + 2) == '+') {
                     try { o.append((char) Integer.parseInt(s.substring(i + 3, i + 7), 16)); i += 6; continue; } catch (Exception ignored) {}
                 }
-                if (!mtext) { o.append(ch); continue; }
+                if (!mtext) { put(o, ch, map); continue; }
                 switch (k) {
                     case 'P': o.append('\n'); i++; continue;
                     case '~': o.append(' '); i++; continue;
-                    case '\\': case '{': case '}': o.append(k); i++; continue;
+                    case '\\': case '{': case '}': put(o, k, map); i++; continue;
                     case 'L': case 'l': case 'O': case 'o': case 'K': case 'k': i++; continue;
                     case 'S': { // stacked fraction \S1/2;
                         int end = s.indexOf(';', i);
@@ -714,18 +981,33 @@ public final class DxfParser {
                         o.append(s.substring(i + 2, end).replace('^', '/').replace('#', '/'));
                         i = end; continue;
                     }
+                    case 'f': case 'F': { // font switch: \fArial|b0|i0; or \Fxarab.shx;
+                        int end = s.indexOf(';', i);
+                        if (end < 0) end = n;
+                        String spec = s.substring(i + 2, end);
+                        int bar = spec.indexOf('|');
+                        map = ArabicShx.isMappedFont(bar >= 0 ? spec.substring(0, bar) : spec);
+                        i = end; continue;
+                    }
                     default:
-                        if (Character.isLetter(k)) { // \f..; \H..; \C..; \A..; \W..; \Q..; \T..; \p..;
+                        if (Character.isLetter(k)) { // \H..; \C..; \A..; \W..; \Q..; \T..; \p..;
                             int end = s.indexOf(';', i);
                             i = end < 0 ? n : end;
                             continue;
                         }
                 }
             }
-            if (mtext && (ch == '{' || ch == '}')) continue;
-            o.append(ch);
+            // Lower-case 'u' is the joining form of ع; at the end of a word drafters use it for ء (e.g. كهرباء).
+            if (map && ch == 'u' && (i + 1 >= n || !ArabicShx.isLetterKey(s.charAt(i + 1)))) { o.append('\u0621'); continue; }
+            if (mtext && ch == '{') { if (sp < stack.length) stack[sp++] = map; continue; }
+            if (mtext && ch == '}') { if (sp > 0) map = stack[--sp]; continue; }
+            put(o, ch, map);
         }
         return o.toString();
+    }
+
+    private static void put(StringBuilder o, char ch, boolean map) {
+        if (map) ArabicShx.appendMapped(o, ch); else o.append(ch);
     }
 
     // ---------------------------------------------------------------- insert

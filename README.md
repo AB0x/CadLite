@@ -8,11 +8,15 @@ no AndroidX). It needs no permissions and makes no network access.
 - Pan, pinch-zoom, double-tap zoom, **Fit** (zoom extents, stray far-away objects ignored)
 - **Layers** on/off (frozen/off layers start hidden), dark/light background
 - Shows in Android's **"Open with"** list for .dxf/.dwg (WhatsApp, Files, Gmail, Drive…)
-- Supported entities: LINE, LWPOLYLINE/POLYLINE (bulges, meshes, polyface), CIRCLE, ARC, ELLIPSE,
+- Supported entities: LINE, LWPOLYLINE/POLYLINE (bulges, widths, meshes, polyface), CIRCLE, ARC, ELLIPSE,
   SPLINE (NURBS), TEXT, MTEXT, ATTRIB, INSERT (nested blocks, arrays, mirrored), DIMENSION,
-  LEADER, SOLID, 3DFACE, HATCH (solid = filled, pattern = outline), POINT
-- Colors: ACI, true color, BYLAYER, BYBLOCK. Text decoding: UTF‑8 (R2007+) or the file's code page
-  (e.g. ANSI_1256 Arabic). `%%c %%d %%p` and `\U+XXXX` are decoded.
+  LEADER (with arrowhead), MULTILEADER (leader lines, landing, arrowhead blocks such as _DotSmall,
+  text or block content), SOLID, 3DFACE, HATCH (solid = filled, pattern = outline), POINT
+- Colors: ACI, true color, BYLAYER, BYBLOCK. Text decoding: UTF-8 (R2007+) or the file's code page
+  (e.g. ANSI_1256). `%%c %%d %%p` and `\U+XXXX` are decoded.
+- **Arabic SHX fonts** (xarab.shx, xarb.shx, sosa.shx and other "*arab*" fonts) that store Arabic as
+  keyboard-mapped Latin letters (e.g. `plhL` → حمام) are converted to real Arabic and drawn right-to-left,
+  including MTEXT inline font switches.
 
 Not included, to keep it basic: linetypes/line weights, hatch patterns, paper-space layouts,
 xrefs, images, binary DXF, editing and measuring.

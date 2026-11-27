@@ -54,7 +54,8 @@ final class TextPainter {
             float sx = (float) (t.x * scale + tx), sy = (float) (-t.y * scale + ty);
             paint.setTextSize(Math.min(size, 4000));
             paint.setColor(d.resolve(t.color, t.layer, dark));
-            paint.setTextAlign(t.hAlign == 1 ? Paint.Align.CENTER : t.hAlign == 2 ? Paint.Align.RIGHT : Paint.Align.LEFT);
+            paint.setTextAlign(t.hAlign == 1 ? Paint.Align.CENTER
+                    : (t.hAlign == 2 || (t.rtl && !t.multi)) ? Paint.Align.RIGHT : Paint.Align.LEFT);
             float capH = size * 0.72f, lineStep = size * 1.2f;
             float first;
             if (t.multi) {

@@ -36,12 +36,13 @@ public final class Geo {
         public int vAlign;
         public boolean multi; // MTEXT: vAlign refers to whole text block
         public int maxLen;    // longest line length (set when the drawing is finalized)
+        public boolean rtl;   // right-to-left SHX font: a left-aligned anchor is the right end
         public int layer, color;
 
         Text copy() {
             Text t = new Text();
             t.x = x; t.y = y; t.h = h; t.rot = rot; t.widthFactor = widthFactor; t.lines = lines;
-            t.hAlign = hAlign; t.vAlign = vAlign; t.multi = multi; t.layer = layer; t.color = color;
+            t.hAlign = hAlign; t.vAlign = vAlign; t.multi = multi; t.layer = layer; t.color = color; t.rtl = rtl;
             return t;
         }
     }

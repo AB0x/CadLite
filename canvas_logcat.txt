@@ -1,0 +1,22 @@
+--------- beginning of kernel
+--------- beginning of main
+--------- beginning of system
+11-27 16:12:17.991  2264  2264 I CADBENCH: renderer=canvas parse_ms=542 segments=495000 texts=3360 fills=2520
+11-27 16:12:20.121  2264  2264 I CADBENCH: renderer=canvas parse_ms=446 segments=495000 texts=3360 fills=2520
+11-27 16:12:21.493  2264  2264 I CADBENCH: SHOT_out
+11-27 16:12:23.623  2264  2264 I CADBENCH: SHOT_out
+11-27 16:12:40.378  2264  2264 I CADBENCH: zoomed_out: vsyncs=300 seconds=14.88 render_fps=0.0 ui_fps=0.0
+11-27 16:12:40.382  2264  2264 I CADBENCH:   zoomed_out window CPU/frame: avg 44.96 ms, p90 58.70 ms, max 85.0 ms (n=170)
+11-27 16:12:40.383  2264  2264 I CADBENCH:     UI-thread draw: avg 5.14 ms, p90 11.47 ms, max 33.1 ms (n=170)
+11-27 16:12:40.383  2264  2264 I CADBENCH:     RenderThread issue: avg 39.12 ms, p90 53.65 ms, max 66.3 ms (n=170)
+11-27 16:12:42.533  2264  2264 I CADBENCH: SHOT_in
+11-27 16:12:49.992  2264  2264 I CADBENCH: zoomed_out: vsyncs=300 seconds=22.37 render_fps=13.4 ui_fps=13.4
+11-27 16:12:49.996  2264  2264 I CADBENCH:   zoomed_out window CPU/frame: avg 42.77 ms, p90 56.58 ms, max 85.0 ms (n=298)
+11-27 16:12:49.998  2264  2264 I CADBENCH:     UI-thread draw: avg 4.90 ms, p90 9.40 ms, max 34.3 ms (n=298)
+11-27 16:12:49.999  2264  2264 I CADBENCH:     RenderThread issue: avg 37.12 ms, p90 51.41 ms, max 66.3 ms (n=298)
+11-27 16:12:52.000  2264  2264 I CADBENCH: SHOT_in
+11-27 16:12:54.267  2264  2264 I CADBENCH: zoomed_in: vsyncs=300 seconds=7.65 render_fps=0.0 ui_fps=0.0
+11-27 16:12:54.268  2264  2264 I CADBENCH:   zoomed_in window CPU/frame: avg 38.33 ms, p90 44.00 ms, max 69.1 ms (n=49)
+11-27 16:12:54.268  2264  2264 I CADBENCH:     UI-thread draw: avg 4.33 ms, p90 5.85 ms, max 34.3 ms (n=49)
+11-27 16:12:54.269  2264  2264 I CADBENCH:     RenderThread issue: avg 33.17 ms, p90 38.45 ms, max 42.6 ms (n=49)
+11-27 16:12:54.770  2264  2264 I CADBENCH: DONE

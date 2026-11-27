@@ -1,0 +1,19 @@
+renderer=canvas parse_ms=542 segments=495000 texts=3360 fills=2520
+renderer=canvas parse_ms=446 segments=495000 texts=3360 fills=2520
+SHOT_out
+SHOT_out
+zoomed_out: vsyncs=300 seconds=14.88 render_fps=0.0 ui_fps=0.0
+  zoomed_out window CPU/frame: avg 44.96 ms, p90 58.70 ms, max 85.0 ms (n=170)
+    UI-thread draw: avg 5.14 ms, p90 11.47 ms, max 33.1 ms (n=170)
+    RenderThread issue: avg 39.12 ms, p90 53.65 ms, max 66.3 ms (n=170)
+SHOT_in
+zoomed_out: vsyncs=300 seconds=22.37 render_fps=13.4 ui_fps=13.4
+  zoomed_out window CPU/frame: avg 42.77 ms, p90 56.58 ms, max 85.0 ms (n=298)
+    UI-thread draw: avg 4.90 ms, p90 9.40 ms, max 34.3 ms (n=298)
+    RenderThread issue: avg 37.12 ms, p90 51.41 ms, max 66.3 ms (n=298)
+SHOT_in
+zoomed_in: vsyncs=300 seconds=7.65 render_fps=0.0 ui_fps=0.0
+  zoomed_in window CPU/frame: avg 38.33 ms, p90 44.00 ms, max 69.1 ms (n=49)
+    UI-thread draw: avg 4.33 ms, p90 5.85 ms, max 34.3 ms (n=49)
+    RenderThread issue: avg 33.17 ms, p90 38.45 ms, max 42.6 ms (n=49)
+DONE

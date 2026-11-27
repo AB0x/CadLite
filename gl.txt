@@ -1,0 +1,16 @@
+renderer=gl parse_ms=1304 segments=495000 texts=3360 fills=2520
+SHOT_out
+zoomed_out: vsyncs=300 seconds=7.40 render_fps=21.2 ui_fps=0.0 cache=true slow_gpu=true
+  zoomed_out window CPU/frame: n/a
+    UI-thread draw: n/a
+    RenderThread issue: n/a
+  zoomed_out GL thread CPU/frame: avg 0.37 ms, p90 0.17 ms, max 34.3 ms (n=157)
+  zoomed_out text layer: requested=0 drawn=0
+SHOT_in
+zoomed_in: vsyncs=300 seconds=15.49 render_fps=18.5 ui_fps=19.3 cache=false slow_gpu=true
+  zoomed_in window CPU/frame: avg 25.25 ms, p90 47.82 ms, max 101.1 ms (n=297)
+    UI-thread draw: avg 1.70 ms, p90 0.76 ms, max 59.9 ms (n=297)
+    RenderThread issue: avg 22.57 ms, p90 44.48 ms, max 75.5 ms (n=297)
+  zoomed_in GL thread CPU/frame: avg 0.38 ms, p90 0.08 ms, max 36.1 ms (n=286)
+  zoomed_in text layer: requested=601 drawn=299
+DONE

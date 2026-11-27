@@ -96,10 +96,23 @@ final class GlRenderer implements GLSurfaceView.Renderer {
     volatile boolean lastFrameCached;
     /** Benchmark switch: never use the overview cache. */
     volatile boolean cacheDisabled;
+    /** True while the user is panning/zooming. */
+    volatile boolean interacting;
+    /**
+     * Set when full-geometry frames are too slow on this GPU while moving. Only then is the
+     * overview cache used, and only during motion: a still view is always drawn from the real
+     * geometry, so lines stay crisp.
+     */
+    volatile boolean slowGpu;
+    private long prevFrameStart;
+    private boolean prevFrameGeometry;
+    private float frameEma;
+    private int frameSamples;
+    private static final float SLOW_FRAME_MS = 28f;
 
     GlRenderer(Viewport vp) { this.vp = vp; }
 
-    void setDrawing(Drawing d) { pending = d; }
+    void setDrawing(Drawing d) { pending = d; slowGpu = false; frameSamples = 0; frameEma = 0; }
     void setDark(boolean d) { dark = d; contentVersion++; }
     /** Layer visibility changed: the overview cache must be redrawn. */
     void invalidateCache() { contentVersion++; }
@@ -133,6 +146,15 @@ final class GlRenderer implements GLSurfaceView.Renderer {
     @Override
     public void onDrawFrame(GL10 unused) {
         long t0 = System.nanoTime();
+        // Measure throughput of full-geometry frames during continuous interaction.
+        if (interacting && prevFrameGeometry && prevFrameStart != 0) {
+            float ms = (t0 - prevFrameStart) / 1e6f;
+            if (ms < 500) {
+                frameEma = frameSamples == 0 ? ms : frameEma * 0.8f + ms * 0.2f;
+                if (++frameSamples >= 8 && frameEma > SLOW_FRAME_MS) slowGpu = true;
+            }
+        }
+        prevFrameStart = interacting ? t0 : 0;
         Drawing p = pending;
         if (p != null) { pending = null; scene = p; uploaded = false; }
         if (scene != null && !uploaded) { upload(scene); uploaded = true; }
@@ -148,7 +170,7 @@ final class GlRenderer implements GLSurfaceView.Renderer {
             float sc = st[0], tx = st[1], ty = st[2];
             float vx0 = -tx / sc, vx1 = (width - tx) / sc, vy0 = (ty - height) / sc, vy1 = ty / sc;
             float texelsPerUnit = cacheOk || !cacheTried ? texW / Math.max(cx1 - cx0, 1e-9f) : 0;
-            boolean useCache = !cacheDisabled && sc <= texelsPerUnit;
+            boolean useCache = !cacheDisabled && slowGpu && interacting && sc <= texelsPerUnit;
             if (useCache && (!cacheValid || cacheVersion != contentVersion)) useCache = buildCache(d, dk);
             GLES20.glUseProgram(prog);
             GLES20.glUniform4f(uXf, 2 * sc / width, 2 * sc / height, 2 * tx / width - 1, 1 - 2 * ty / height);
@@ -158,6 +180,7 @@ final class GlRenderer implements GLSurfaceView.Renderer {
             }
             drawScene(d, dk, vx0, vy0, vx1, vy1, 1 / sc, useCache);
             lastFrameCached = useCache;
+            prevFrameGeometry = !useCache;
         }
         frames++;
         FrameListener fl = frameListener;

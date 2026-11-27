@@ -107,11 +107,16 @@ final class CadSurface extends FrameLayout implements CadDisplay {
     /** Diagnostics: text-layer redraws this view asked for. */
     long textRequests() { return textLayer.ourInvalidates; }
 
-    @Override public void setInteracting(boolean on) { interacting = on; if (!on) redraw(); }
+    @Override public void setInteracting(boolean on) {
+        interacting = on;
+        renderer.interacting = on;
+        if (!on) redraw(); // final crisp frame from real geometry
+    }
 
     void setFrameListener(GlRenderer.FrameListener l) { renderer.frameListener = l; }
     void setCacheDisabled(boolean off) { renderer.cacheDisabled = off; }
     boolean lastFrameCached() { return renderer.lastFrameCached; }
+    boolean slowGpu() { return renderer.slowGpu; }
 
     private final float[] tmp = new float[3];
 
@@ -127,7 +132,7 @@ final class CadSurface extends FrameLayout implements CadDisplay {
 
     @Override public boolean onTouchEvent(MotionEvent e) {
         int a = e.getActionMasked();
-        if (a == MotionEvent.ACTION_DOWN) interacting = true;
+        if (a == MotionEvent.ACTION_DOWN) setInteracting(true);
         scaleDet.onTouchEvent(e);
         gestDet.onTouchEvent(e);
         if (a == MotionEvent.ACTION_UP || a == MotionEvent.ACTION_CANCEL) setInteracting(false);

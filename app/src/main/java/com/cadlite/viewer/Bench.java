@@ -123,7 +123,8 @@ final class Bench {
                 long uf = (disp instanceof CadSurface ? ((CadSurface) disp).uiFrames() : disp.framesRendered()) - u0;
                 collecting = false;
                 disp.setInteracting(false);
-                String cached = disp instanceof CadSurface ? " cache=" + ((CadSurface) disp).lastFrameCached() : "";
+                String cached = disp instanceof CadSurface ? " cache=" + ((CadSurface) disp).lastFrameCached()
+                        + " slow_gpu=" + ((CadSurface) disp).slowGpu() : "";
                 log(String.format(Locale.US, "%s: vsyncs=%d seconds=%.2f render_fps=%.1f ui_fps=%.1f%s",
                         name, i, sec, gf / sec, uf / sec, cached));
                 log("  " + name + " window CPU/frame: " + stats(uiMs));

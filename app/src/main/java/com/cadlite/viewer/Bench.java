@@ -104,11 +104,16 @@ final class Bench {
         disp.setInteracting(true);
         Choreographer.getInstance().postFrameCallback(new Choreographer.FrameCallback() {
             int i;
+            float prevZoom = 1, prevX, prevY;
             @Override public void doFrame(long frameTimeNanos) {
                 i++;
                 float ph = i / 30f;
-                disp.pan((float) Math.sin(ph) * 6, (float) Math.cos(ph * 0.7) * 4);
-                disp.zoomAt(1 + zoomAmp * (float) Math.sin(ph * 0.5), v.getWidth() / 2f, v.getHeight() / 2f);
+                // Oscillate around the starting view (non-cumulative): +/- zoomAmp*15 zoom, +/- 120 px pan.
+                float z = 1 + zoomAmp * 15 * (float) Math.sin(ph * 0.5);
+                float x = (float) Math.sin(ph) * 120, y = (float) Math.sin(ph * 0.7) * 80;
+                disp.pan(x - prevX, y - prevY);
+                disp.zoomAt(z / prevZoom, v.getWidth() / 2f, v.getHeight() / 2f);
+                prevZoom = z; prevX = x; prevY = y;
                 if (i < FRAMES_PER_PHASE) {
                     Choreographer.getInstance().postFrameCallback(this);
                     return;

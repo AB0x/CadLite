@@ -10,7 +10,7 @@ adb shell svc power stayon true
 adb shell wm size > $OUT/device.txt
 adb push bench/heavy.dxf /data/local/tmp/heavy.dxf
 adb shell "cat /data/local/tmp/heavy.dxf | run-as $PKG sh -c 'mkdir -p files && cat > files/heavy.dxf'"
-for R in canvas gl; do
+for R in canvas gl-nocache gl; do
   adb shell run-as $PKG rm -f files/bench.txt
   adb shell am force-stop $PKG
   adb shell am start -W -n $PKG/.MainActivity --es bench heavy.dxf --es renderer $R

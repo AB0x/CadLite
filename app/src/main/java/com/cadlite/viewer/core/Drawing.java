@@ -25,7 +25,7 @@ public final class Drawing {
     public long segmentCount;
     public String version = "";
 
-    private static final int CHUNK = 4096 * 4;
+    private static final int CHUNK = 2048 * 4;
 
     Drawing(Geo g, List<String> names, int[] colors, boolean[] visible) {
         layerNames = names;
@@ -41,6 +41,7 @@ public final class Drawing {
         for (Map.Entry<Long, Geo.FloatList> en : g.segs.entrySet()) {
             long k = en.getKey();
             Geo.FloatList l = en.getValue();
+            if (l.n > CHUNK) spatialSort(l);
             for (int off = 0; off < l.n; off += CHUNK) {
                 int len = Math.min(CHUNK, l.n - off);
                 Batch b = new Batch();
@@ -60,6 +61,44 @@ public final class Drawing {
             }
             l.a = null; // free
         }
+    }
+
+    /**
+     * Reorders segments along a Z-order (Morton) curve of their midpoints so that each chunk
+     * covers a compact area. Off-screen chunks can then be skipped when zoomed in.
+     */
+    private static void spatialSort(Geo.FloatList l) {
+        int n = l.n / 4;
+        float[] a = l.a;
+        float x0 = Float.MAX_VALUE, y0 = Float.MAX_VALUE, x1 = -Float.MAX_VALUE, y1 = -Float.MAX_VALUE;
+        for (int i = 0; i < l.n; i += 2) {
+            x0 = Math.min(x0, a[i]); x1 = Math.max(x1, a[i]);
+            y0 = Math.min(y0, a[i + 1]); y1 = Math.max(y1, a[i + 1]);
+        }
+        float sx = 32767f / Math.max(x1 - x0, 1e-9f), sy = 32767f / Math.max(y1 - y0, 1e-9f); // 15-bit keeps the key positive
+        long[] keys = new long[n];
+        for (int i = 0; i < n; i++) {
+            int k = i * 4;
+            int qx = (int) (((a[k] + a[k + 2]) * 0.5f - x0) * sx), qy = (int) (((a[k + 1] + a[k + 3]) * 0.5f - y0) * sy);
+            keys[i] = (morton(qx & 0x7FFF, qy & 0x7FFF) << 32) | i;
+        }
+        Arrays.sort(keys);
+        float[] b = new float[l.n];
+        for (int i = 0; i < n; i++) System.arraycopy(a, (int) keys[i] * 4, b, i * 4, 4);
+        l.a = b;
+    }
+
+    private static long morton(int x, int y) {
+        return spread(x) | (spread(y) << 1);
+    }
+
+    private static long spread(int v) {
+        long x = v & 0xFFFFL;
+        x = (x | (x << 8)) & 0x00FF00FFL;
+        x = (x | (x << 4)) & 0x0F0F0F0FL;
+        x = (x | (x << 2)) & 0x33333333L;
+        x = (x | (x << 1)) & 0x55555555L;
+        return x;
     }
 
     /**

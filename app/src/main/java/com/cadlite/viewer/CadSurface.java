@@ -90,7 +90,7 @@ final class CadSurface extends FrameLayout implements CadDisplay {
 
     @Override public void setDark(boolean d) { dark = d; renderer.setDark(d); redraw(); }
     @Override public boolean isDark() { return dark; }
-    @Override public void refresh() { redraw(); }
+    @Override public void refresh() { renderer.invalidateCache(); redraw(); }
 
     @Override public void zoomAt(float f, float fx, float fy) { if (vp.zoomAt(f, fx, fy)) redraw(); }
     @Override public void pan(float dx, float dy) { vp.pan(dx, dy); redraw(); }
@@ -104,6 +104,8 @@ final class CadSurface extends FrameLayout implements CadDisplay {
     @Override public void setInteracting(boolean on) { interacting = on; if (!on) textLayer.invalidate(); }
 
     void setFrameListener(GlRenderer.FrameListener l) { renderer.frameListener = l; }
+    void setCacheDisabled(boolean off) { renderer.cacheDisabled = off; }
+    boolean lastFrameCached() { return renderer.lastFrameCached; }
 
     private void redraw() {
         gl.requestRender();

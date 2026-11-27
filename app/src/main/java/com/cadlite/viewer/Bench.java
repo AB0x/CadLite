@@ -74,8 +74,9 @@ final class Bench {
                 long gf = disp.framesRendered() - f0;
                 long uf = (disp instanceof CadSurface ? ((CadSurface) disp).uiFrames() : disp.framesRendered()) - u0;
                 disp.setInteracting(false);
-                log(String.format(Locale.US, "%s: vsyncs=%d seconds=%.2f render_fps=%.1f ui_fps=%.1f",
-                        name, i, sec, gf / sec, uf / sec));
+                String cached = disp instanceof CadSurface ? " cache=" + ((CadSurface) disp).lastFrameCached() : "";
+                log(String.format(Locale.US, "%s: vsyncs=%d seconds=%.2f render_fps=%.1f ui_fps=%.1f%s",
+                        name, i, sec, gf / sec, uf / sec, cached));
                 h.postDelayed(next, 500);
             }
         });

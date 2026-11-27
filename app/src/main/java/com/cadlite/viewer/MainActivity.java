@@ -91,7 +91,7 @@ public class MainActivity extends Activity {
                     busy = false;
                     showStatus(null);
                     view.setDrawing(d);
-                    new Bench(view, new File(getFilesDir(), "bench.txt"),
+                    new Bench(this, view, new File(getFilesDir(), "bench.txt"),
                             benchRenderer == null ? "gl" : benchRenderer).start(ms);
                 });
             } catch (Throwable t) {

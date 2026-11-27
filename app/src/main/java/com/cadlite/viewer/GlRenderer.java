@@ -161,7 +161,7 @@ final class GlRenderer implements GLSurfaceView.Renderer {
         }
         frames++;
         FrameListener fl = frameListener;
-        if (fl != null) { GLES20.glFinish(); fl.onFrame(System.nanoTime() - t0); }
+        if (fl != null) fl.onFrame(System.nanoTime() - t0);
     }
 
     /** Draws fills then lines. With skipCached, only geometry outside the cache rectangle is drawn. */

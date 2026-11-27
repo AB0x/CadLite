@@ -1,7 +1,11 @@
 package com.cadlite.viewer;
 
+import android.app.Activity;
 import android.os.Handler;
+import android.os.HandlerThread;
 import android.os.Looper;
+import android.view.FrameMetrics;
+import android.view.Window;
 import android.view.Choreographer;
 import android.view.View;
 
@@ -22,11 +26,43 @@ final class Bench {
     private final File out;
     private final String renderer;
     private final Handler h = new Handler(Looper.getMainLooper());
+    private final Activity act;
+    // per-frame CPU times collected during a phase (ms)
+    private final java.util.List<Double> uiMs = java.util.Collections.synchronizedList(new java.util.ArrayList<Double>());
+    private final java.util.List<Double> glMs = java.util.Collections.synchronizedList(new java.util.ArrayList<Double>());
+    private volatile boolean collecting;
 
-    Bench(CadDisplay disp, File out, String renderer) {
+    Bench(Activity act, CadDisplay disp, File out, String renderer) {
+        this.act = act;
         this.disp = disp;
         this.out = out;
         this.renderer = renderer;
+        HandlerThread ht = new HandlerThread("frame-metrics");
+        ht.start();
+        // Window frames: UI-thread drawing + RenderThread command issue (CPU work per frame).
+        act.getWindow().addOnFrameMetricsAvailableListener(new Window.OnFrameMetricsAvailableListener() {
+            @Override public void onFrameMetricsAvailable(Window w, FrameMetrics m, int dropped) {
+                if (!collecting) return;
+                long ns = m.getMetric(FrameMetrics.DRAW_DURATION) + m.getMetric(FrameMetrics.SYNC_DURATION)
+                        + m.getMetric(FrameMetrics.COMMAND_ISSUE_DURATION);
+                uiMs.add(ns / 1e6);
+            }
+        }, new Handler(ht.getLooper()));
+        if (disp instanceof CadSurface) {
+            // GL thread: time to issue the frame (CPU), without waiting for the GPU.
+            ((CadSurface) disp).setFrameListener(ns -> { if (collecting) glMs.add(ns / 1e6); });
+        }
+    }
+
+    private static String stats(java.util.List<Double> l) {
+        java.util.List<Double> c;
+        synchronized (l) { c = new java.util.ArrayList<>(l); }
+        if (c.isEmpty()) return "n/a";
+        java.util.Collections.sort(c);
+        double sum = 0;
+        for (double v : c) sum += v;
+        return String.format(Locale.US, "avg %.2f ms, p90 %.2f ms, max %.1f ms (n=%d)",
+                sum / c.size(), c.get((int) (c.size() * 0.9)), c.get(c.size() - 1), c.size());
     }
 
     void start(long parseMs) {
@@ -58,6 +94,8 @@ final class Bench {
         final long f0 = disp.framesRendered();
         final long u0 = disp instanceof CadSurface ? ((CadSurface) disp).uiFrames() : f0;
         final long t0 = System.nanoTime();
+        uiMs.clear(); glMs.clear();
+        collecting = true;
         disp.setInteracting(true);
         Choreographer.getInstance().postFrameCallback(new Choreographer.FrameCallback() {
             int i;
@@ -73,10 +111,13 @@ final class Bench {
                 double sec = (System.nanoTime() - t0) / 1e9;
                 long gf = disp.framesRendered() - f0;
                 long uf = (disp instanceof CadSurface ? ((CadSurface) disp).uiFrames() : disp.framesRendered()) - u0;
+                collecting = false;
                 disp.setInteracting(false);
                 String cached = disp instanceof CadSurface ? " cache=" + ((CadSurface) disp).lastFrameCached() : "";
                 log(String.format(Locale.US, "%s: vsyncs=%d seconds=%.2f render_fps=%.1f ui_fps=%.1f%s",
                         name, i, sec, gf / sec, uf / sec, cached));
+                log("  " + name + " window CPU/frame: " + stats(uiMs));
+                if (disp instanceof CadSurface) log("  " + name + " GL thread CPU/frame: " + stats(glMs));
                 h.postDelayed(next, 500);
             }
         });

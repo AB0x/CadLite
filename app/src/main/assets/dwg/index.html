@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"></head><body>
+<script type="module">
+import createModule from './libredwg-web.js';
+
+(async () => {
+  try {
+    const m = await createModule();
+    const buf = new Uint8Array(await (await fetch('input.dwg')).arrayBuffer());
+    m.FS.writeFile('in.dwg', buf);
+    const err = m.dwg_write_dxf('in.dwg', 'out.dxf');
+    let out = null;
+    try { out = m.FS.readFile('out.dxf'); } catch (e) {}
+    try { m.FS.unlink('in.dwg'); } catch (e) {}
+    if (!out || !out.length) { Android.fail('Could not read this DWG (LibreDWG error ' + err + ')'); return; }
+    // Send bytes as Latin-1 strings in chunks (each char = one byte).
+    const CH = 1 << 19;
+    for (let i = 0; i < out.length; i += CH) {
+      const sub = out.subarray(i, Math.min(i + CH, out.length));
+      let s = '';
+      for (let j = 0; j < sub.length; j += 8192) s += String.fromCharCode.apply(null, sub.subarray(j, j + 8192));
+      Android.chunk(s);
+    }
+    Android.done();
+  } catch (e) {
+    Android.fail('DWG conversion failed: ' + (e && e.message ? e.message : e));
+  }
+})();
+</script>
+</body></html>

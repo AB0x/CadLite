@@ -104,6 +104,9 @@ final class CadSurface extends FrameLayout implements CadDisplay {
     /** Text-layer (UI thread) frames drawn. */
     long uiFrames() { return frames; }
 
+    /** Diagnostics: text-layer redraws this view asked for. */
+    long textRequests() { return textLayer.ourInvalidates; }
+
     @Override public void setInteracting(boolean on) { interacting = on; if (!on) redraw(); }
 
     void setFrameListener(GlRenderer.FrameListener l) { renderer.frameListener = l; }
@@ -116,7 +119,7 @@ final class CadSurface extends FrameLayout implements CadDisplay {
         gl.requestRender();
         // The text layer is a separate window layer: only redraw it when it has (or had) something to show.
         vp.get(tmp);
-        if (textLayer.painter.lastDrawn > 0 || TextPainter.anyReadable(drawing, tmp[0])) textLayer.invalidate();
+        if (textLayer.painter.lastDrawn > 0 || TextPainter.anyReadable(drawing, tmp[0])) textLayer.request();
     }
 
     // ------------------------------------------------------------------ touch
@@ -145,7 +148,12 @@ final class CadSurface extends FrameLayout implements CadDisplay {
         final TextPainter painter = new TextPainter();
         private final float[] st = new float[3];
 
+        volatile long ourInvalidates;
+        volatile String lastForeign;
+
         TextLayer(Context c) { super(c); }
+
+        void request() { ourInvalidates++; invalidate(); }
 
         @Override protected void onDraw(Canvas c) {
             frames++;

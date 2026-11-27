@@ -97,6 +97,7 @@ final class Bench {
         final View v = disp.view();
         final long f0 = disp.framesRendered();
         final long u0 = disp instanceof CadSurface ? ((CadSurface) disp).uiFrames() : f0;
+        final long r0 = disp instanceof CadSurface ? ((CadSurface) disp).textRequests() : 0;
         final long t0 = System.nanoTime();
         uiMs.clear(); glMs.clear(); drawMs.clear(); issueMs.clear();
         collecting = true;
@@ -123,7 +124,10 @@ final class Bench {
                 log("  " + name + " window CPU/frame: " + stats(uiMs));
                 log("    UI-thread draw: " + stats(drawMs));
                 log("    RenderThread issue: " + stats(issueMs));
-                if (disp instanceof CadSurface) log("  " + name + " GL thread CPU/frame: " + stats(glMs));
+                if (disp instanceof CadSurface) {
+                    log("  " + name + " GL thread CPU/frame: " + stats(glMs));
+                    log("  " + name + " text layer: requested=" + (((CadSurface) disp).textRequests() - r0) + " drawn=" + uf);
+                }
                 h.postDelayed(next, 500);
             }
         });

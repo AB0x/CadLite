@@ -40,7 +40,7 @@ jobs:
           profile: pixel_4
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot
-          script: BENCH_RENDERERS="canvas gl-nocache gl" bash bench/run_bench.sh
+          script: BENCH_RENDERERS="gl" bash bench/run_bench.sh
       - name: Publish results to bench-results branch
         if: always()
         run: |

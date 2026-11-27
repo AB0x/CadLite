@@ -23,6 +23,8 @@ public final class Drawing {
     public final List<Geo.Fill> fills;
     public float minX, minY, maxX, maxY; // zoom-extents box
     public long segmentCount;
+    /** Largest text height, used to skip text drawing entirely when all texts are too small. */
+    public double maxTextHeight;
     public String version = "";
 
     private static final int CHUNK = 2048 * 4;
@@ -37,6 +39,7 @@ public final class Drawing {
             int m = 0;
             for (String l : t.lines) m = Math.max(m, l.length());
             t.maxLen = m;
+            if (t.h > maxTextHeight) maxTextHeight = t.h;
         }
         for (Map.Entry<Long, Geo.FloatList> en : g.segs.entrySet()) {
             long k = en.getKey();

@@ -70,6 +70,7 @@ final class CadSurface extends FrameLayout implements CadDisplay {
 
     @Override public void setDrawing(final Drawing d) {
         drawing = d;
+        textLayer.invalidate();
         renderer.setDrawing(d);
         needFit = true;
         if (getWidth() > 0) zoomExtents();
@@ -90,9 +91,9 @@ final class CadSurface extends FrameLayout implements CadDisplay {
         redraw();
     }
 
-    @Override public void setDark(boolean d) { dark = d; renderer.setDark(d); redraw(); }
+    @Override public void setDark(boolean d) { dark = d; renderer.setDark(d); textLayer.invalidate(); redraw(); }
     @Override public boolean isDark() { return dark; }
-    @Override public void refresh() { renderer.invalidateCache(); redraw(); }
+    @Override public void refresh() { renderer.invalidateCache(); textLayer.invalidate(); redraw(); }
 
     @Override public void zoomAt(float f, float fx, float fy) { if (vp.zoomAt(f, fx, fy)) redraw(); }
     @Override public void pan(float dx, float dy) { vp.pan(dx, dy); redraw(); }
@@ -103,15 +104,19 @@ final class CadSurface extends FrameLayout implements CadDisplay {
     /** Text-layer (UI thread) frames drawn. */
     long uiFrames() { return frames; }
 
-    @Override public void setInteracting(boolean on) { interacting = on; if (!on) textLayer.invalidate(); }
+    @Override public void setInteracting(boolean on) { interacting = on; if (!on) redraw(); }
 
     void setFrameListener(GlRenderer.FrameListener l) { renderer.frameListener = l; }
     void setCacheDisabled(boolean off) { renderer.cacheDisabled = off; }
     boolean lastFrameCached() { return renderer.lastFrameCached; }
 
+    private final float[] tmp = new float[3];
+
     private void redraw() {
         gl.requestRender();
-        textLayer.invalidate();
+        // The text layer is a separate window layer: only redraw it when it has (or had) something to show.
+        vp.get(tmp);
+        if (textLayer.painter.lastDrawn > 0 || TextPainter.anyReadable(drawing, tmp[0])) textLayer.invalidate();
     }
 
     // ------------------------------------------------------------------ touch
@@ -137,7 +142,7 @@ final class CadSurface extends FrameLayout implements CadDisplay {
 
     // ------------------------------------------------------------------ text layer
     private final class TextLayer extends View {
-        private final TextPainter painter = new TextPainter();
+        final TextPainter painter = new TextPainter();
         private final float[] st = new float[3];
 
         TextLayer(Context c) { super(c); }
@@ -145,7 +150,7 @@ final class CadSurface extends FrameLayout implements CadDisplay {
         @Override protected void onDraw(Canvas c) {
             frames++;
             Drawing d = drawing;
-            if (d == null || d.texts.isEmpty()) return;
+            if (d == null || d.texts.isEmpty()) { painter.lastDrawn = 0; return; }
             vp.get(st);
             painter.draw(c, d, st[0], st[1], st[2], dark, interacting ? TEXT_BUDGET_MOVING : Integer.MAX_VALUE);
         }

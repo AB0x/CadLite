@@ -8,11 +8,18 @@ import com.cadlite.viewer.core.Geo;
 
 /** Draws drawing texts in screen space, skipping texts that are off screen or too small to read. */
 final class TextPainter {
+    /** True if, at this scale, at least one text of the drawing could be large enough to draw. */
+    static boolean anyReadable(Drawing d, float scale) {
+        return d != null && d.maxTextHeight * scale * 1.38 >= MIN_PX;
+    }
+
     /** Below this on-screen size (px) a text is not drawn. */
     static final float MIN_PX = 4f;
 
     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private int[] visible = new int[256];
+    /** Number of texts drawn by the last call. */
+    int lastDrawn;
 
     TextPainter() {
         paint.setSubpixelText(true);
@@ -23,6 +30,7 @@ final class TextPainter {
      * drawn and false is returned (used to keep panning smooth on text-dense views).
      */
     boolean draw(Canvas c, Drawing d, float scale, float tx, float ty, boolean dark, int budget) {
+        lastDrawn = 0;
         if (d == null) return true;
         float w = c.getWidth(), h = c.getHeight();
         boolean[] vis = d.layerVisible;
@@ -39,6 +47,7 @@ final class TextPainter {
             visible[n++] = i;
             if (n > budget) return false;
         }
+        lastDrawn = n;
         for (int k = 0; k < n; k++) {
             Geo.Text t = texts.get(visible[k]);
             float size = (float) (t.h * scale * 1.38);

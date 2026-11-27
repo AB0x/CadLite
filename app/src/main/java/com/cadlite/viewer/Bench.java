@@ -29,6 +29,8 @@ final class Bench {
     private final Activity act;
     // per-frame CPU times collected during a phase (ms)
     private final java.util.List<Double> uiMs = java.util.Collections.synchronizedList(new java.util.ArrayList<Double>());
+    private final java.util.List<Double> drawMs = java.util.Collections.synchronizedList(new java.util.ArrayList<Double>());
+    private final java.util.List<Double> issueMs = java.util.Collections.synchronizedList(new java.util.ArrayList<Double>());
     private final java.util.List<Double> glMs = java.util.Collections.synchronizedList(new java.util.ArrayList<Double>());
     private volatile boolean collecting;
 
@@ -46,6 +48,8 @@ final class Bench {
                 long ns = m.getMetric(FrameMetrics.DRAW_DURATION) + m.getMetric(FrameMetrics.SYNC_DURATION)
                         + m.getMetric(FrameMetrics.COMMAND_ISSUE_DURATION);
                 uiMs.add(ns / 1e6);
+                drawMs.add(m.getMetric(FrameMetrics.DRAW_DURATION) / 1e6);
+                issueMs.add(m.getMetric(FrameMetrics.COMMAND_ISSUE_DURATION) / 1e6);
             }
         }, new Handler(ht.getLooper()));
         if (disp instanceof CadSurface) {
@@ -94,7 +98,7 @@ final class Bench {
         final long f0 = disp.framesRendered();
         final long u0 = disp instanceof CadSurface ? ((CadSurface) disp).uiFrames() : f0;
         final long t0 = System.nanoTime();
-        uiMs.clear(); glMs.clear();
+        uiMs.clear(); glMs.clear(); drawMs.clear(); issueMs.clear();
         collecting = true;
         disp.setInteracting(true);
         Choreographer.getInstance().postFrameCallback(new Choreographer.FrameCallback() {
@@ -117,6 +121,8 @@ final class Bench {
                 log(String.format(Locale.US, "%s: vsyncs=%d seconds=%.2f render_fps=%.1f ui_fps=%.1f%s",
                         name, i, sec, gf / sec, uf / sec, cached));
                 log("  " + name + " window CPU/frame: " + stats(uiMs));
+                log("    UI-thread draw: " + stats(drawMs));
+                log("    RenderThread issue: " + stats(issueMs));
                 if (disp instanceof CadSurface) log("  " + name + " GL thread CPU/frame: " + stats(glMs));
                 h.postDelayed(next, 500);
             }
